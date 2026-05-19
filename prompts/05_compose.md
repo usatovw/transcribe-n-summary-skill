@@ -14,9 +14,13 @@ You write a Russian essay-longread in slow-journalism style. The transcript and 
   "anti_barnum": <style/anti_barnum.md>,
   "gold_anchors": [<top-2 retrieved gold essays for style>],
   "transcript_with_timestamps": "[00:00:00] segment text\n[00:00:05] next segment\n...",
-  "source_duration_seconds": <int>
+  "source_duration_seconds": <int>,
+  "source_lang": "en",
+  "output_lang": "ru"
 }
 ```
+
+**source_lang vs output_lang** контролирует поведение цитат — см. правило 5. Не игнорировать: если языки разные, цитаты должны переводиться (с пометкой `[пер.]`), а не оставляться на исходном.
 
 **The `transcript_with_timestamps` field is the source of truth for `[t=HH:MM:SS]` annotations** — when inserting a verbatim quote, find its line there and copy the leading `[HH:MM:SS]`. The ledger's `ts` field is per-chunk and frequently drifts 5-25 seconds.
 
@@ -50,7 +54,12 @@ Plain Markdown — single Russian essay, no JSON, no preamble. Structure:
 2. **Verbatim quote ratio: 12-15%** от слов. Считай: total_quoted_words / total_essay_words.
 3. **No bullet lists** в теле. Допустимы только в TL;DR если там 2-3 предложения и без bullet'ов всё равно лучше.
 4. **Inline citations** обязательны: `[c14]` после каждого тезиса опирающегося на claim. Без этого VERIFY провалит.
-5. **Quotes — byte-for-byte** из transcript_segments[].text. Цитата считается verbatim только если её *точно* можно найти в транскрипте. Если ledger.quote показывает чуть отличный текст от транскрипта — бери транскрипт, не ledger. Если редактируешь (например, режешь стутер «эм…»), помечай явно `[ред.]` — без флага VERIFY провалит.
+5. **Quotes — language-matched**. Если `source_lang == output_lang` — цитата byte-for-byte из `transcript_segments[].text`. Если *разные* (типичный случай: source en, output ru) — цитата **переводится** на язык эссе и помечается `[пер.]`, всё равно с таймкодом `[t=HH:MM:SS]`. **Никаких иноязычных вставок внутри русского текста** — это не slow journalism, это код-свитч. Если режешь стутер («эм…», филлеры) — `[ред.]`. Если переводишь и адаптируешь — `[пер.]`. Без флага VERIFY провалит.
+
+   Примеры:
+   - source ru, output ru: `«доверять процессу — это не пассивность, это вера в систему» [t=12:34]`
+   - source en, output ru: `«полагаться на процесс — не пассивность, это вера в систему» [пер.] [t=12:34]`
+   - НЕ ДЕЛАТЬ: `«trust the process» — это не пассивность` (английский внутри русского)
 6. **Timestamps `[t=HH:MM:SS]` ОБЯЗАНЫ быть из транскрипта**, не из ledger. Ledger ts строится per-chunk и часто дрейфует на 5-25 секунд. Когда вставляешь цитату — найди её в `transcript_with_timestamps` (или попроси verify сверить позже) и используй *именно тот* `[start]` сегмента, где она звучит. **Никогда** не переноси ts из ledger без проверки.
 7. **Анти-Барнум** — каждое утверждение проходит тест из `anti_barnum.md`. Если применимо к 80%+ интервью в индустрии — выкинь.
 8. **First-person observer**, не Wikipedia. Автор присутствует, ставит ударения. Но не "я думаю" в каждом абзаце.

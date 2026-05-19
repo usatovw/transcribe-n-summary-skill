@@ -1081,6 +1081,8 @@ def step_compose(state, ledger, plan, tensions, meta) -> str:
     )
     duration_s = int(transcript_segments[-1]["end"]) if transcript_segments else 0
 
+    source_lang = (meta.get("lang") or "auto").split("-")[0][:2]
+    output_lang = CONFIG.get("compose", {}).get("output_lang", "ru")
     user = json.dumps({
         "outline": plan,
         "ledger": ledger,
@@ -1091,6 +1093,8 @@ def step_compose(state, ledger, plan, tensions, meta) -> str:
         "gold_anchors": gold,
         "transcript_with_timestamps": transcript_text[:80000],
         "source_duration_seconds": duration_s,
+        "source_lang": source_lang,
+        "output_lang": output_lang,
     }, ensure_ascii=False)
     return claude_call(sys_prompt, user, max_tokens=CONFIG["claude"]["max_tokens_compose"])
 
@@ -1105,13 +1109,14 @@ def _load_gold_anchors(plan) -> list:
 
 
 # ---------- Step 08: VERIFY ----------
-def step_verify(state, essay_md, ledger, transcript_segments) -> dict:
+def step_verify(state, essay_md, ledger, transcript_segments, meta=None) -> dict:
     LOG.info("[08_verify] Chain-of-Verification")
     sys_prompt = load_prompt("06_verify")
     constitution = (SKILL_ROOT / "style" / "constitution.md").read_text()
     anti_barnum = (SKILL_ROOT / "style" / "anti_barnum.md").read_text()
-    # source_duration_seconds enables the ambition-vs-source check in the prompt
     duration_s = int(transcript_segments[-1]["end"]) if transcript_segments else 0
+    source_lang = ((meta or {}).get("lang") or "auto").split("-")[0][:2]
+    output_lang = CONFIG.get("compose", {}).get("output_lang", "ru")
     user = json.dumps({
         "essay_md": essay_md,
         "ledger": ledger,
@@ -1119,6 +1124,8 @@ def step_verify(state, essay_md, ledger, transcript_segments) -> dict:
         "constitution": constitution,
         "anti_barnum": anti_barnum,
         "source_duration_seconds": duration_s,
+        "source_lang": source_lang,
+        "output_lang": output_lang,
     }, ensure_ascii=False)
     return claude_call_json(sys_prompt, user, max_tokens=CONFIG["claude"]["max_tokens_verify"])
 
@@ -1142,10 +1149,12 @@ def step_edit_loop(state, essay_md, ledger) -> str:
     constitution = (SKILL_ROOT / "style" / "constitution.md").read_text()
     anti_barnum = (SKILL_ROOT / "style" / "anti_barnum.md").read_text()
     current = essay_md
-    transcript_segments = state.read_json("01_acquire")["transcript_segments"]
+    acq = state.read_json("01_acquire")
+    transcript_segments = acq["transcript_segments"]
+    meta = acq.get("meta", {})
 
     for it in range(1, CONFIG["verify"]["edit_loop_max"] + 1):
-        verify = step_verify(state, current, ledger, transcript_segments)
+        verify = step_verify(state, current, ledger, transcript_segments, meta=meta)
         gap = step_gap(state, current, ledger, state.read_json("05_plan"))
         state.write_json(f"08_verify_iter{it}", verify)
         state.write_json(f"09_gap_iter{it}", gap)

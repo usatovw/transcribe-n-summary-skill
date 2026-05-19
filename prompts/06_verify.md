@@ -11,7 +11,9 @@ You are a faithfulness checker. Your job is mechanical: for each sentence in the
   "transcript_segments": [<segments with ts and text>],
   "constitution": <constitution.md>,
   "anti_barnum": <anti_barnum.md>,
-  "source_duration_seconds": <int — audio length, for ambition-vs-source check>
+  "source_duration_seconds": <int — audio length, for ambition-vs-source check>,
+  "source_lang": "en",
+  "output_lang": "ru"
 }
 ```
 
@@ -57,6 +59,9 @@ You are a faithfulness checker. Your job is mechanical: for each sentence in the
     "verdict": "EARNED|OVERREACH",
     "reason": "why this analytic depth fits / doesn't fit this source length and type"
   },
+  "language_purity_violations": [
+    {"idx": <int>, "phrase": "English text found inside Russian essay quotes"}
+  ],
   "summary": {
     "supported_pct": 0.0-1.0,
     "contradicted_count": <int>,
@@ -84,6 +89,7 @@ You are a faithfulness checker. Your job is mechanical: for each sentence in the
 - listicle_violations == [] in essay body
 - **timestamp_drift**: every essay `[t=HH:MM:SS]` annotation MUST match a transcript_segments entry within ±5 seconds. For each violation, populate one entry in `timestamp_drift`. If any drift > 10 seconds → FAIL.
 - **ambition_vs_source**: if `source_duration_seconds < 600` (under 10 min) AND the essay makes claims about *editorial design*, *systematic patterns*, *worldview*, or *philosophy of the outlet* — verdict OVERREACH. Short wire-news bulletins and quick reads do not support claims about an outlet's editorial system; the essay must stay closer to the facts. OVERREACH → FAIL.
+- **language_purity**: if `output_lang == "ru"`, the essay body must contain NO Latin-script words inside quotation marks except: proper nouns (Snap, OpenAI, Trump), product names, technical terms with no Russian equivalent (API, SDK), and the explicit `[пер.]` / `[ред.]` flags. Specifically: any English **phrase or sentence inside «...»** is a `language_purity` violation. For each, log to `language_purity_violations`. If any present → FAIL. Quotes translated from the source must carry `[пер.]` next to `[t=...]`. Source quotes in the essay's language without a flag are fine. This rule exists because slow journalism in Russian should read as Russian prose, not bilingual code-switch.
 
 If any fail → verdict FAIL, populate fail_reasons + revise_focus.
 
