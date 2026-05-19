@@ -700,9 +700,24 @@ def _whisper_transcribe(audio_path: str, language: str, initial_prompt: str,
         except Exception as e:
             LOG.warning("whisper: partial unreadable, restarting: %s", e)
 
-    LOG.info("loading whisper model=%s", cfg["model"])
+    # Preflight: how long is the audio, do we have RAM, which model can we afford?
+    duration_s = _audio_duration_seconds(audio_path)
+    chosen_model, reason = _pick_whisper_model(cfg["model"], duration_s)
+    free_disk = _free_disk_mb(Path(audio_path).parent)
+    LOG.info(
+        "whisper preflight: audio=%.1f min, free_ram=%d MB, free_disk=%d MB → model=%s (%s)",
+        duration_s / 60.0, _free_ram_mb(), free_disk, chosen_model, reason,
+    )
+    if free_disk and free_disk < 500:
+        LOG.warning(
+            "free disk %d MB is low; Whisper writes partial checkpoints and "
+            "the pipeline writes intermediate JSON — risk of ENOSPC mid-run.",
+            free_disk,
+        )
+
+    LOG.info("loading whisper model=%s", chosen_model)
     model = WhisperModel(
-        cfg["model"], device="cpu", compute_type=cfg["compute_type"],
+        chosen_model, device="cpu", compute_type=cfg["compute_type"],
         cpu_threads=cfg["cpu_threads"], num_workers=cfg["num_workers"],
     )
     lang = language if language and language != "auto" else None
@@ -781,6 +796,104 @@ def _post_filter_whisper(segments: list) -> list:
 # YouTube auto-subs sometimes leak inline formatting (`<c>`, <c.colorE5E5E5>`, etc.).
 # Strip before storing the segment text — these tags survive otherwise.
 _SUB_TAG_RE = re.compile(r"</?(?:c|i|b|u|font|s)[^>]*>", re.IGNORECASE)
+
+
+# ---------- Resource preflight (RAM/disk → Whisper model autoselect) ----------
+# Empirical peak RSS during faster-whisper inference (int8, CPU) for typical 1-hour
+# audio. Long-form (>60 min) gets a multiplier because activations + audio buffer
+# accumulate. Numbers err on the conservative side — better refuse upfront than OOM
+# mid-Whisper and lose 30 minutes of CPU work.
+_WHISPER_PEAK_MB: dict[str, int] = {
+    "tiny": 600, "tiny.en": 600,
+    "base": 800, "base.en": 800,
+    "small": 1500, "small.en": 1500,
+    "medium": 3000, "medium.en": 3000,
+    "large": 4500, "large-v2": 4500, "large-v3": 4500,
+    "large-v3-turbo": 3500,
+    "distil-large-v3": 2500,
+}
+
+
+def _free_ram_mb() -> int:
+    """Read /proc/meminfo MemAvailable in MB. Returns 0 on non-Linux platforms,
+    which short-circuits the preflight (we don't refuse to run; just lose the check)."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) // 1024
+    except (OSError, ValueError):
+        pass
+    return 0
+
+
+def _free_disk_mb(path: Path) -> int:
+    try:
+        return shutil.disk_usage(path).free // (1024 * 1024)
+    except OSError:
+        return 0
+
+
+def _required_whisper_ram_mb(model: str, duration_s: float) -> int:
+    """Estimate peak RAM needed for a Whisper run.
+    Base = model peak from the table; long-form gets x1.15 (60-90 min) or x1.30 (>90 min);
+    +500 MB safety so we don't sit on the edge of OOM-killer."""
+    base = _WHISPER_PEAK_MB.get(model, 3000)
+    duration_min = duration_s / 60.0
+    if duration_min > 90:
+        base = int(base * 1.30)
+    elif duration_min > 60:
+        base = int(base * 1.15)
+    return base + 500
+
+
+def _pick_whisper_model(requested: str, duration_s: float) -> tuple[str, str]:
+    """Return (model_name, reason). If the requested model doesn't fit free RAM,
+    downgrade to the largest model that does. If even 'tiny' doesn't fit, raise."""
+    free = _free_ram_mb()
+    if not free:
+        return requested, "preflight skipped (not Linux or /proc unreadable)"
+
+    # Downgrade ladder. Pin order so we always pick the biggest that fits.
+    ladder = [requested]
+    for fallback in ("small", "base", "tiny"):
+        if fallback not in ladder:
+            ladder.append(fallback)
+
+    requested_need = _required_whisper_ram_mb(requested, duration_s)
+
+    for cand in ladder:
+        need = _required_whisper_ram_mb(cand, duration_s)
+        if need <= free:
+            if cand == requested:
+                return cand, f"fits (need ~{need} MB, free {free} MB)"
+            return cand, (
+                f"requested {requested!r} needs ~{requested_need} MB but only "
+                f"{free} MB free; downgraded to {cand!r} (~{need} MB)"
+            )
+
+    smallest = "tiny"
+    raise RuntimeError(
+        f"Cannot fit any Whisper model in available RAM. "
+        f"free={free} MB, even {smallest!r} would need ~{_required_whisper_ram_mb(smallest, duration_s)} MB "
+        f"for {duration_s/60:.0f}-min audio. Options: add swap "
+        f"(`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`), "
+        f"reduce audio length with --max-duration-min, or use a host with more RAM."
+    )
+
+
+def _audio_duration_seconds(audio_path: str) -> float:
+    """Quick ffprobe to learn audio length. Returns 0 if it fails (we then default to
+    the most pessimistic long-form estimate to stay safe)."""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
+            capture_output=True, text=True, check=False, timeout=15,
+        )
+        return float(r.stdout.strip() or 0)
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
+        return 0.0
 
 
 def _parse_srt(srt_text: str) -> list:
