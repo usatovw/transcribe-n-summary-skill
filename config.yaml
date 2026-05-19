@@ -1,0 +1,91 @@
+# Transcribe skill config
+#
+# Sections are grouped: "Common knobs" up top (often-edited), "Tuning" below.
+# Anything not listed here is hardcoded in pipeline.py or set in prompts/.
+
+# ============================
+#  Common knobs
+# ============================
+
+# Claude model used for every LLM step.
+# - claude-opus-4-7   — strongest, best for slow-journalism essay-craft
+# - claude-sonnet-4-6 — ~3x cheaper, mild quality drop, fine for non-essay sources
+# - claude-haiku-4-5  — cheap smoke tests; quality drop is real
+claude:
+  model: claude-opus-4-7
+  max_tokens_extract: 8000
+  max_tokens_compose: 6000
+  max_tokens_verify: 4000
+
+# Essay output language. Default RU because style/gold/ ships Russian anchors
+# and prompts/ are calibrated for Russian prose. Switching to "en" only makes
+# sense if you also add English gold essays to style/gold/.
+compose:
+  output_lang: ru
+  gold_retrieval_top_k: 2   # how many gold essays to ship to the COMPOSE prompt
+
+# YouTube auth — pipeline preflights this and bails early if neither is set.
+youtube:
+  cookies_file: ~/.config/yt-dlp/cookies.txt
+  proxy: ""                  # or set YT_PROXY env
+
+# Acquire step.
+acquire:
+  max_duration_min: 360      # refuse sources longer than 6 hours (override via --max-duration-min)
+
+# Whisper. Pick model by available RAM (see SKILL.md table).
+#   medium   ~1.5 GB peak (default — safe for 4 GB free RAM)
+#   small    ~700 MB peak (fallback for tight RAM)
+#   large-v3-turbo ~3 GB peak (only with ≥6 GB free or GPU)
+# The other keys below are tuning — don't change `condition_on_previous_text`
+# (false is critical against repetition hallucinations on CPU).
+whisper:
+  model: medium
+  compute_type: int8
+  cpu_threads: 4
+  num_workers: 1
+  beam_size: 5
+  vad_filter: true
+  vad_parameters:
+    threshold: 0.5
+    min_silence_duration_ms: 500
+    speech_pad_ms: 400
+    min_speech_duration_ms: 250
+  condition_on_previous_text: false
+  repetition_penalty: 1.2
+  no_repeat_ngram_size: 3
+  hallucination_silence_threshold: 2.0
+  word_timestamps: true
+  prompt_reset_on_temperature: 0.5
+
+# ============================
+#  Tuning (rare to edit)
+# ============================
+
+# ffmpeg pre-processing for Whisper input.
+ffmpeg: ffmpeg
+yt_dlp: yt-dlp
+audio_normalize: "-ar 16000 -ac 1 -af loudnorm=I=-16:TP=-1.5:LRA=11"
+
+# Chunking — embedding-cosine TextTiling (sentence-transformers MiniLM, 80 MB).
+chunking:
+  embedding_model: sentence-transformers/all-MiniLM-L6-v2
+  cosine_threshold: 0.5      # below = topic shift candidate
+
+# Extract step parallelism.
+extract:
+  semaphore: 3               # parallel LLM calls
+  retry_max: 3               # per chunk
+  retry_backoff_base: 2
+
+# Verify / edit loop bounds. Quality thresholds (≥0.95 supported, 0.12-0.15
+# quote ratio, 0.70 coverage, ≤10s ts drift) live in prompts/06_verify.md —
+# changing them there changes enforcement at runtime.
+verify:
+  edit_loop_max: 3
+  edit_diff_stop: 0.05
+
+# Cross-run episodic memory at ~/.local/share/transcribe/episodes.jsonl
+# (override path via TRANSCRIBE_DATA_DIR env).
+memory:
+  related_top_k: 3           # past episodes to retrieve by similarity

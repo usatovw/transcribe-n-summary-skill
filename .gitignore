@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Pipeline runtime artifacts (state, outputs, cache)
+.cache/
+state/
+output/
+transcribe/
+# ...but DO ship the canonical sample output so visitors see what to expect
+!samples/**/output/
+!samples/**/output/**
+
+# Episodic memory accumulates per-user; start fresh on clone
+memory/episodes.jsonl
+memory/*.jsonl
+
+# Whisper partial checkpoints
+*.partial.json
+
+# Audio/video work files
+*.mp3
+*.opus
+*.m4a
+*.wav
+*.ogg
+*.flac
+*.mp4
+*.mkv
+*.webm
+
+# Editor / OS junk
+.DS_Store
+.idea/
+.vscode/
+*.swp

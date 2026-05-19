@@ -1,0 +1,513 @@
+[
+  {
+    "start": 0.43,
+    "end": 7.07,
+    "text": "Live from NPR News, I'm Giles Snyder. President Trump says that the U-S has delayed an attack",
+    "no_speech_prob": 0.46213164925575256,
+    "avg_logprob": -0.35017602145671844
+  },
+  {
+    "start": 7.07,
+    "end": 12.13,
+    "text": "on Iran because Middle Eastern allies asked him to – Trump said his attack was going",
+    "no_speech_prob": 0.46213164925575256,
+    "avg_logprob": -0.35017602145671844
+  },
+  {
+    "start": 12.13,
+    "end": 17.35,
+    "text": "take place Tuesday but now he's told military leaders stand down and NPR's Deepa Shivaram",
+    "no_speech_prob": 0.46213164925575256,
+    "avg_logprob": -0.35017602145671844
+  },
+  {
+    "start": 30.43,
+    "end": 34.89,
+    "text": "a while because we've had very big discussions with Iran.",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 35.01,
+    "end": 38.95,
+    "text": "Cutter and the UAE both say a deal is close to happening, which",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 38.95,
+    "end": 40.83,
+    "text": "Is why they asked Trump To pause",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 40.83,
+    "end": 41.91,
+    "text": "The planned attack.",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 42.25,
+    "end": 43.97,
+    "text": "Trump says A deal will ultimately",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 43.97,
+    "end": 45.83,
+    "text": "have to include Iran agreeing",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 45.83,
+    "end": 46.83,
+    "text": "to not Have",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 46.83,
+    "end": 48.97,
+    "text": "A nuclear weapon Deepa Shivaram",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 48.97,
+    "end": 49.69,
+    "text": "And PR News",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 49.69,
+    "end": 50.75,
+    "text": "The White House President",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 50.75,
+    "end": 51.73,
+    "text": "Trump Had warned that",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 51.73,
+    "end": 53.09,
+    "text": "The clock was ticking for",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 53.09,
+    "end": 53.41,
+    "text": "Iran",
+    "no_speech_prob": 0.1643027514219284,
+    "avg_logprob": -0.45496705146062943
+  },
+  {
+    "start": 53.41,
+    "end": 58.91,
+    "text": "strike a deal or fighting would renew. The special agent in charge of the FBI San Diego",
+    "no_speech_prob": 0.00786789320409298,
+    "avg_logprob": -0.32305173484646543
+  },
+  {
+    "start": 58.91,
+    "end": 62.17,
+    "text": "field office Mark Bremley is asking the public for help",
+    "no_speech_prob": 0.00786789320409298,
+    "avg_logprob": -0.32305173484646543
+  },
+  {
+    "start": 62.17,
+    "end": 67.57,
+    "text": "and investigation into Monday's shooting at San Diego County largest mosque",
+    "no_speech_prob": 0.00786789320409298,
+    "avg_logprob": -0.32305173484646543
+  },
+  {
+    "start": 83.43,
+    "end": 85.59,
+    "text": "no matter how small, could be useful.",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 85.87,
+    "end": 88.33,
+    "text": "Police say two teenage suspects opened fire",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 88.33,
+    "end": 91.39,
+    "text": "at the Islamic Center of San Diego killing three men",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 91.39,
+    "end": 93.55,
+    "text": "The suspect were found dead in a car",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 93.55,
+    "end": 95.85,
+    "text": "with apparent self-inflicted gunshot wounds",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 95.85,
+    "end": 98.71,
+    "text": "A federal judge in Oakland California Monday",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 98.71,
+    "end": 101.49,
+    "text": "accepted juries ruling against Elon Musk",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 101.49,
+    "end": 103.85,
+    "text": "that jury deliberated less than 2 hours",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 103.85,
+    "end": 105.97,
+    "text": "and must lawsuit against OpenAI",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 105.97,
+    "end": 107.29,
+    "text": "And it's top executives",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 107.29,
+    "end": 110.05,
+    "text": "That Jury Found Open AI not liable",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 110.05,
+    "end": 111.61,
+    "text": "for having allegedly strayed",
+    "no_speech_prob": 0.19502907991409302,
+    "avg_logprob": -0.29217853628355883
+  },
+  {
+    "start": 111.61,
+    "end": 114.79,
+    "text": "from its original non-profit mission to benefit humanity,",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 115.27,
+    "end": 117.55,
+    "text": "saying Musk waited too long",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 117.55,
+    "end": 118.79,
+    "text": "To file his lawsuit.",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 119.39,
+    "end": 121.53,
+    "text": "A strike at the nation's largest commuter rail network",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 121.53,
+    "end": 123.09,
+    "text": "has ended after three days",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 123.09,
+    "end": 124.57,
+    "text": "Bruce Conviser reports",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 124.57,
+    "end": 127.01,
+    "text": "that New York mass transportation authority",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 127.01,
+    "end": 128.57,
+    "text": "and Long Island railroad workers",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 128.57,
+    "end": 130.59,
+    "text": "reached a deal Monday night",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 130.82,
+    "end": 132.54,
+    "text": "Governor Kathy Hochul applauded",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 132.54,
+    "end": 133.58,
+    "text": "The agreement she said",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 133.58,
+    "end": 134.94,
+    "text": "MTA had reach the fair",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 134.94,
+    "end": 136.86,
+    "text": "Deal with five striking unions",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 136.86,
+    "end": 139.34,
+    "text": "Details of the agreement have not been released",
+    "no_speech_prob": 0.0702882632613182,
+    "avg_logprob": -0.265743063046382
+  },
+  {
+    "start": 139.34,
+    "end": 142.36,
+    "text": "but Hokel said it gave the 3,500 striking rail workers",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 142.36,
+    "end": 145.12,
+    "text": "a fair salary increase while protecting riders.",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 145.68,
+    "end": 147.86,
+    "text": "When negotiations broke off early Saturday",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 147.86,
+    "end": 148.78,
+    "text": "Hokele warned that",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 148.78,
+    "end": 150.32,
+    "text": "The Salary Raise being sought by",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 150.32,
+    "end": 153.36,
+    "text": "Unions would force the MTA to raise transit fares",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 153.36,
+    "end": 155.44,
+    "text": "perhaps as much 8%.",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 155.44,
+    "end": 158.3,
+    "text": "More than 250 thousand weekday commuters depend",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 158.3,
+    "end": 159.48,
+    "text": "on the LIRR",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 159.48,
+    "end": 161.32,
+    "text": "To get them into and out of city",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 161.32,
+    "end": 162.42,
+    "text": "This strike led",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 162.42,
+    "end": 163.74,
+    "text": "Massive traffic tie-ups",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 163.74,
+    "end": 164.34,
+    "text": "On Mondays",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 164.34,
+    "end": 165.62,
+    "text": "Would be Rail Riders tried",
+    "no_speech_prob": 0.01575011946260929,
+    "avg_logprob": -0.32469166058396537
+  },
+  {
+    "start": 165.62,
+    "end": 170.56,
+    "text": "get to work by car. Notwithstanding the New Deal, Tuesday morning's commute is expected",
+    "no_speech_prob": 0.06464140862226486,
+    "avg_logprob": -0.18329486115412277
+  },
+  {
+    "start": 196.68,
+    "end": 201.28,
+    "text": "suppressed. Mancione is pleading not guilty to state and federal charges",
+    "no_speech_prob": 0.05231642723083496,
+    "avg_logprob": -0.3398762445668785
+  },
+  {
+    "start": 201.28,
+    "end": 206.5,
+    "text": "under 50 scientific researchers, and organizations are pressuring Congress",
+    "no_speech_prob": 0.05231642723083496,
+    "avg_logprob": -0.3398762445668785
+  },
+  {
+    "start": 206.5,
+    "end": 210.86,
+    "text": "NOT to overturn the management plan for their Grand Staircase Escalante",
+    "no_speech_prob": 0.05231642723083496,
+    "avg_logprob": -0.3398762445668785
+  },
+  {
+    "start": 210.86,
+    "end": 215.58,
+    "text": "National Monument in southern Utah from member station KNAU Ryan",
+    "no_speech_prob": 0.05231642723083496,
+    "avg_logprob": -0.3398762445668785
+  },
+  {
+    "start": 215.58,
+    "end": 220.18,
+    "text": "Heinches reports. The group of archaeologists paleontologist biologists",
+    "no_speech_prob": 0.05231642723083496,
+    "avg_logprob": -0.3398762445668785
+  },
+  {
+    "start": 220.18,
+    "end": 224.76,
+    "text": "And others called a nearly 2 million acre expanse an unparalleled living",
+    "no_speech_prob": 0.05231642723083496,
+    "avg_logprob": -0.3398762445668785
+  },
+  {
+    "start": 224.76,
+    "end": 232.96,
+    "text": "Laboratory. They've nicknamed Grand Staircase the Science Monument because of its fossil record ecological diversity and cultural resources",
+    "no_speech_prob": 0.17469364404678345,
+    "avg_logprob": -0.4087893986234478
+  },
+  {
+    "start": 232.96,
+    "end": 236.64,
+    "text": "The researchers sent a letter to federal lawmakers urging them",
+    "no_speech_prob": 0.17469364404678345,
+    "avg_logprob": -0.4087893986234478
+  },
+  {
+    "start": 236.64,
+    "end": 237.92,
+    "text": "To reject an attempt",
+    "no_speech_prob": 0.17469364404678345,
+    "avg_logprob": -0.4087893986234478
+  },
+  {
+    "start": 237.92,
+    "end": 238.78,
+    "text": "To toss out",
+    "no_speech_prob": 0.17469364404678345,
+    "avg_logprob": -0.4087893986234478
+  },
+  {
+    "start": 238.78,
+    "end": 244.52,
+    "text": "Monuments Management Plan that governs science, conservation, recreation and cultural protection.",
+    "no_speech_prob": 0.04449653625488281,
+    "avg_logprob": -0.14864558786959262
+  },
+  {
+    "start": 245.12,
+    "end": 250.46,
+    "text": "The effort is spearheaded by Utah Republican Senator Mike Lee who has long fought national",
+    "no_speech_prob": 0.04449653625488281,
+    "avg_logprob": -0.14864558786959262
+  },
+  {
+    "start": 268.78,
+    "end": 275.16,
+    "text": "have sent to investigate the 1994 killings of OJ Simpson's former wife Nicole Brown and",
+    "no_speech_prob": 0.035199277102947235,
+    "avg_logprob": -0.17272059406552995
+  }
+]

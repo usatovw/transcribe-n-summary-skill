@@ -1,0 +1,39 @@
+# Whisper hallucination patterns to filter from transcripts post-Whisper.
+# Format: one regex per line. Lines starting with # are comments.
+# Match against full segment text (case-insensitive).
+
+# Russian / multi-language subtitle artifacts
+^Субтитры подготовил DimaTorzok\.?$
+^Субтитры подготовлены сообществом Amara\.org\.?$
+^Субтитры сделаны.*$
+^Корректор:.*$
+^Редактор субтитров.*$
+^Untertitel im Auftrag des ZDF.*$
+^Untertitelung des ZDF.*$
+^Sous-titrage.*$
+^Sottotitoli.*$
+
+# YouTube/podcast endings
+^Thanks for watching\.?$
+^Thank you for watching\.?$
+^Thanks for listening\.?$
+^Subscribe to my channel\.?$
+^Like and subscribe\.?$
+^Don't forget to subscribe\.?$
+^See you next time\.?$
+^See you in the next video\.?$
+^Продолжение следует\.{0,3}$
+
+# Single-token / no-content
+^[\.,\s]*$
+^\[Music\]$
+^\[Музыка\]$
+^\[Applause\]$
+^\[Аплодисменты\]$
+^\(music\)$
+^\(музыка\)$
+
+# Drop conditions (apply with metadata, not regex):
+# - no_speech_prob > 0.6 AND avg_logprob < -1.0
+# - segment.duration < 0.3s AND single word from above
+# - 3+ identical consecutive segments (loop detection)
