@@ -700,27 +700,33 @@ def _whisper_transcribe(audio_path: str, language: str, initial_prompt: str,
         except Exception as e:
             LOG.warning("whisper: partial unreadable, restarting: %s", e)
 
-    # Preflight: how long is the audio, do we have RAM, which model can we afford?
+    # Preflight: pick a model that fits, and decide single-pass vs chunked.
     duration_s = _audio_duration_seconds(audio_path)
-    chosen_model, reason = _pick_whisper_model(cfg["model"], duration_s)
+    chosen_model, reason, chunked = _pick_whisper_model(cfg["model"], duration_s)
     free_disk = _free_disk_mb(Path(audio_path).parent)
     LOG.info(
-        "whisper preflight: audio=%.1f min, free_ram=%d MB, free_disk=%d MB → model=%s (%s)",
-        duration_s / 60.0, _free_ram_mb(), free_disk, chosen_model, reason,
+        "whisper preflight: audio=%.1f min, free_ram=%d MB, free_disk=%d MB → model=%s chunked=%s (%s)",
+        duration_s / 60.0, _free_ram_mb(), free_disk, chosen_model, chunked, reason,
     )
     if free_disk and free_disk < 500:
         LOG.warning(
-            "free disk %d MB is low; Whisper writes partial checkpoints and "
-            "the pipeline writes intermediate JSON — risk of ENOSPC mid-run.",
+            "free disk %d MB is low; Whisper writes partial checkpoints — risk of ENOSPC.",
             free_disk,
         )
 
-    LOG.info("loading whisper model=%s", chosen_model)
+    lang = language if language and language != "auto" else None
+
+    if chunked:
+        return _whisper_transcribe_chunked(
+            audio_path=audio_path, language=lang, initial_prompt=initial_prompt,
+            model_name=chosen_model, cfg=cfg, partial_path=partial_path,
+        )
+
+    LOG.info("loading whisper model=%s (single-pass)", chosen_model)
     model = WhisperModel(
         chosen_model, device="cpu", compute_type=cfg["compute_type"],
         cpu_threads=cfg["cpu_threads"], num_workers=cfg["num_workers"],
     )
-    lang = language if language and language != "auto" else None
     segments, info = model.transcribe(
         audio_path,
         language=lang,
@@ -750,10 +756,113 @@ def _whisper_transcribe(audio_path: str, language: str, initial_prompt: str,
             "segments": out, "done": True,
             "language": info.language, "language_probability": info.language_probability,
         }, ensure_ascii=False))
-    # Critical: free memory before subsequent steps
     del model
     gc.collect()
     return _post_filter_whisper(out)
+
+
+def _whisper_transcribe_chunked(audio_path: str, language: str | None,
+                                initial_prompt: str, model_name: str,
+                                cfg: dict, partial_path: Path | None) -> list:
+    """Slice audio into N-minute pieces via ffmpeg, run Whisper on each, stitch
+    segments back together with cumulative time offsets. Peak RAM is bounded by
+    one chunk's activation footprint, not the full audio length.
+
+    Per-chunk checkpoints: if the process dies on chunk K, a re-run resumes after
+    the last fully processed chunk."""
+    from faster_whisper import WhisperModel
+
+    audio_p = Path(audio_path)
+    chunk_dir = audio_p.parent / "whisper_chunks"
+    chunk_dir.mkdir(exist_ok=True)
+    chunk_seconds = _WHISPER_CHUNK_MIN * 60
+
+    # 1) Slice audio (only if not already sliced — resume support)
+    existing = sorted(chunk_dir.glob("chunk_*.wav"))
+    if not existing:
+        pattern = str(chunk_dir / "chunk_%05d.wav")
+        slice_cmd = [
+            CONFIG["ffmpeg"], "-y", "-i", str(audio_p),
+            "-f", "segment", "-segment_time", str(chunk_seconds),
+            "-c", "copy", pattern,
+        ]
+        LOG.info("chunked-whisper: slicing audio: %s", shlex.join(slice_cmd))
+        subprocess.run(slice_cmd, check=True, capture_output=True)
+        existing = sorted(chunk_dir.glob("chunk_*.wav"))
+    LOG.info("chunked-whisper: %d chunks (~%d min each)", len(existing), _WHISPER_CHUNK_MIN)
+
+    # 2) Resume support: if partial has a record of N chunks done, skip them.
+    all_segs: list = []
+    completed_chunks = 0
+    if partial_path and partial_path.exists():
+        try:
+            prev = json.loads(partial_path.read_text())
+            if not prev.get("done"):
+                all_segs = prev.get("segments", [])
+                completed_chunks = int(prev.get("chunks_done", 0))
+                LOG.info("chunked-whisper: resuming with %d segs from %d chunks",
+                         len(all_segs), completed_chunks)
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    # 3) Load model ONCE, iterate chunks.
+    LOG.info("chunked-whisper: loading model=%s", model_name)
+    model = WhisperModel(
+        model_name, device="cpu", compute_type=cfg["compute_type"],
+        cpu_threads=cfg["cpu_threads"], num_workers=cfg["num_workers"],
+    )
+    detected_lang = "auto"
+    detected_lang_prob = 0.0
+    try:
+        for idx, chunk_path in enumerate(existing):
+            if idx < completed_chunks:
+                continue
+            offset = idx * chunk_seconds
+            segments, info = model.transcribe(
+                str(chunk_path),
+                language=language,
+                beam_size=cfg["beam_size"],
+                condition_on_previous_text=cfg["condition_on_previous_text"],
+                repetition_penalty=cfg["repetition_penalty"],
+                no_repeat_ngram_size=cfg["no_repeat_ngram_size"],
+                vad_filter=cfg["vad_filter"],
+                vad_parameters=cfg["vad_parameters"],
+                word_timestamps=cfg["word_timestamps"],
+                hallucination_silence_threshold=cfg["hallucination_silence_threshold"],
+                initial_prompt=initial_prompt or None,
+                prompt_reset_on_temperature=cfg["prompt_reset_on_temperature"],
+            )
+            chunk_count = 0
+            for s in segments:
+                all_segs.append({
+                    "start": float(s.start) + offset, "end": float(s.end) + offset,
+                    "text": s.text.strip(),
+                    "no_speech_prob": s.no_speech_prob, "avg_logprob": s.avg_logprob,
+                })
+                chunk_count += 1
+            detected_lang = info.language or detected_lang
+            detected_lang_prob = info.language_probability or detected_lang_prob
+            LOG.info("chunked-whisper: chunk %d/%d done (+%d segs, total=%d, lang=%s)",
+                     idx + 1, len(existing), chunk_count, len(all_segs), detected_lang)
+            if partial_path:
+                partial_path.write_text(json.dumps({
+                    "segments": all_segs, "chunks_done": idx + 1,
+                    "done": False,
+                }, ensure_ascii=False))
+            gc.collect()  # release per-chunk activations before the next pass
+    finally:
+        del model
+        gc.collect()
+
+    if partial_path:
+        partial_path.write_text(json.dumps({
+            "segments": all_segs, "chunks_done": len(existing),
+            "done": True,
+            "language": detected_lang, "language_probability": detected_lang_prob,
+        }, ensure_ascii=False))
+    LOG.info("chunked-whisper: complete, %d segments across %d chunks",
+             len(all_segs), len(existing))
+    return _post_filter_whisper(all_segs)
 
 
 _HALLUCINATION_PATTERNS: list[re.Pattern] | None = None
@@ -799,19 +908,25 @@ _SUB_TAG_RE = re.compile(r"</?(?:c|i|b|u|font|s)[^>]*>", re.IGNORECASE)
 
 
 # ---------- Resource preflight (RAM/disk → Whisper model autoselect) ----------
-# Empirical peak RSS during faster-whisper inference (int8, CPU) for typical 1-hour
-# audio. Long-form (>60 min) gets a multiplier because activations + audio buffer
-# accumulate. Numbers err on the conservative side — better refuse upfront than OOM
-# mid-Whisper and lose 30 minutes of CPU work.
+# Empirical peak RSS during faster-whisper inference (int8, CPU) — observed values,
+# NOT the "model file size" you read about elsewhere. Whisper allocates activations,
+# audio buffers, VAD state, beam-search candidates on top of the weights.
+# Numbers err on the conservative side: better refuse upfront than OOM-kill the VM
+# mid-Whisper (which we observed empirically on a 4GB VPS with 99-min audio).
 _WHISPER_PEAK_MB: dict[str, int] = {
-    "tiny": 600, "tiny.en": 600,
-    "base": 800, "base.en": 800,
-    "small": 1500, "small.en": 1500,
-    "medium": 3000, "medium.en": 3000,
-    "large": 4500, "large-v2": 4500, "large-v3": 4500,
-    "large-v3-turbo": 3500,
-    "distil-large-v3": 2500,
+    "tiny": 900, "tiny.en": 900,
+    "base": 1300, "base.en": 1300,
+    "small": 2200, "small.en": 2200,
+    "medium": 3500, "medium.en": 3500,
+    "large": 6000, "large-v2": 6000, "large-v3": 6000,
+    "large-v3-turbo": 4500,
+    "distil-large-v3": 3500,
 }
+
+# Per-chunk peak when we run the chunked path. Chunked Whisper holds only one
+# audio segment in memory at a time so the long-form multiplier doesn't apply.
+_WHISPER_CHUNK_MIN = 10  # minutes of audio per chunk
+_WHISPER_CHUNK_BASE_OVERHEAD_MB = 400  # python + numpy + decoder state
 
 
 def _free_ram_mb() -> int:
@@ -835,50 +950,88 @@ def _free_disk_mb(path: Path) -> int:
 
 
 def _required_whisper_ram_mb(model: str, duration_s: float) -> int:
-    """Estimate peak RAM needed for a Whisper run.
-    Base = model peak from the table; long-form gets x1.15 (60-90 min) or x1.30 (>90 min);
-    +500 MB safety so we don't sit on the edge of OOM-killer."""
-    base = _WHISPER_PEAK_MB.get(model, 3000)
+    """Estimate peak RAM needed for a single-pass Whisper run on this duration.
+    Base = model peak; long-form multiplier x1.15 (60-90 min) / x1.50 (>90 min)
+    because activations accumulate and VAD holds wider context windows.
+    +800 MB safety so we don't sit on the edge of the OOM-killer."""
+    base = _WHISPER_PEAK_MB.get(model, 3500)
     duration_min = duration_s / 60.0
     if duration_min > 90:
-        base = int(base * 1.30)
+        base = int(base * 1.50)
     elif duration_min > 60:
         base = int(base * 1.15)
-    return base + 500
+    return base + 800
 
 
-def _pick_whisper_model(requested: str, duration_s: float) -> tuple[str, str]:
-    """Return (model_name, reason). If the requested model doesn't fit free RAM,
-    downgrade to the largest model that does. If even 'tiny' doesn't fit, raise."""
+def _required_whisper_ram_chunked_mb(model: str) -> int:
+    """Peak when Whisper sees one _WHISPER_CHUNK_MIN-minute chunk at a time.
+    Long-form multiplier doesn't apply, but model weights + per-chunk overhead do."""
+    base = _WHISPER_PEAK_MB.get(model, 3500)
+    return base + _WHISPER_CHUNK_BASE_OVERHEAD_MB + 500  # +500 safety
+
+
+def _pick_whisper_model(requested: str, duration_s: float) -> tuple[str, str, bool]:
+    """Choose (model, reason, chunked) given free RAM and audio length.
+
+    Strategy:
+      - Long audio (>60 min): prefer CHUNKED mode — peak RAM stays small per chunk
+        so we can run a *bigger* model and get better transcription quality than
+        single-pass-tiny on the whole file. Try chunked from requested down to tiny.
+      - Short audio (≤60 min): single-pass is faster, no slicing overhead.
+        Try single-pass from requested down to tiny.
+      - Always falls back to the other mode if the preferred mode can't fit any model.
+      - If nothing fits, raise with concrete remediation (swap, smaller source, GPU).
+    """
     free = _free_ram_mb()
     if not free:
-        return requested, "preflight skipped (not Linux or /proc unreadable)"
+        return requested, "preflight skipped (not Linux or /proc unreadable)", False
 
-    # Downgrade ladder. Pin order so we always pick the biggest that fits.
     ladder = [requested]
-    for fallback in ("small", "base", "tiny"):
+    for fallback in ("medium", "small", "base", "tiny"):
         if fallback not in ladder:
             ladder.append(fallback)
 
     requested_need = _required_whisper_ram_mb(requested, duration_s)
+    is_long = duration_s / 60.0 > 60
 
-    for cand in ladder:
-        need = _required_whisper_ram_mb(cand, duration_s)
-        if need <= free:
-            if cand == requested:
-                return cand, f"fits (need ~{need} MB, free {free} MB)"
-            return cand, (
-                f"requested {requested!r} needs ~{requested_need} MB but only "
-                f"{free} MB free; downgraded to {cand!r} (~{need} MB)"
-            )
+    def try_single_pass():
+        for cand in ladder:
+            need = _required_whisper_ram_mb(cand, duration_s)
+            if need <= free:
+                if cand == requested:
+                    return cand, f"fits single-pass (need ~{need} MB, free {free} MB)", False
+                return cand, (
+                    f"requested {requested!r} single-pass needs ~{requested_need} MB but "
+                    f"only {free} MB free; downgraded to {cand!r} single-pass (~{need} MB)"
+                ), False
+        return None
 
-    smallest = "tiny"
+    def try_chunked():
+        for cand in ladder:
+            need = _required_whisper_ram_chunked_mb(cand)
+            if need <= free:
+                return cand, (
+                    f"audio is {duration_s/60:.0f} min — using {_WHISPER_CHUNK_MIN}-min "
+                    f"chunked mode with {cand!r} (~{need} MB per chunk; "
+                    f"single-pass {requested!r} would need ~{requested_need} MB)"
+                ), True
+        return None
+
+    primary = try_chunked if is_long else try_single_pass
+    fallback = try_single_pass if is_long else try_chunked
+
+    result = primary() or fallback()
+    if result:
+        return result
+
+    smallest_need = _required_whisper_ram_chunked_mb("tiny")
     raise RuntimeError(
-        f"Cannot fit any Whisper model in available RAM. "
-        f"free={free} MB, even {smallest!r} would need ~{_required_whisper_ram_mb(smallest, duration_s)} MB "
-        f"for {duration_s/60:.0f}-min audio. Options: add swap "
-        f"(`fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile`), "
-        f"reduce audio length with --max-duration-min, or use a host with more RAM."
+        f"Cannot fit any Whisper model — even chunked 'tiny' needs ~{smallest_need} MB "
+        f"and only {free} MB free. Options:\n"
+        f"  1. Add swap (4 GB recommended for long-form):\n"
+        f"     fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile\n"
+        f"  2. Use a smaller source (--max-duration-min, or trim with ffmpeg first)\n"
+        f"  3. Run on a host with more RAM, or use an external transcription API"
     )
 
 
