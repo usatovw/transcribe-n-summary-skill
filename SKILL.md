@@ -76,7 +76,6 @@ State and output live in the **caller's working directory** at `<cwd>/transcribe
 | `playbooks/_learned/` | playbooks for sources you add (DIVE Club example included) |
 | `filters/whisper_hallucinations.txt` | regex-blacklist (post-Whisper) |
 | `config.yaml` | knobs (Whisper, chunking, claude model, verify thresholds) |
-| `tests/test_pure.py` | unit tests for pure helpers (`python -m unittest discover tests/`) |
 
 ## How to run
 
