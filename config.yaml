@@ -79,9 +79,15 @@ whisper:
 # ============================
 
 # ffmpeg pre-processing for Whisper input.
+# `-ar 16000 -ac 1` is required (Whisper expects 16kHz mono).
+# `-af loudnorm=...` (loudness normalization) is OPTIONAL — and on long audio
+# (>30 min) it can OOM small VMs because EBU loudnorm uses two-pass analysis
+# that buffers the whole file in memory. Whisper transcription quality is
+# essentially identical with or without it. Enable only if you need consistent
+# perceived volume across batch outputs, AND you have >=8 GB free RAM.
 ffmpeg: ffmpeg
 yt_dlp: yt-dlp
-audio_normalize: "-ar 16000 -ac 1 -af loudnorm=I=-16:TP=-1.5:LRA=11"
+audio_normalize: "-ar 16000 -ac 1"
 
 # Chunking — embedding-cosine TextTiling (sentence-transformers MiniLM, 80 MB).
 chunking:
