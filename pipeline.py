@@ -633,12 +633,26 @@ def _ffmpeg_to_wav(src: Path, dst: Path) -> None:
 
 @register_source("apple_podcasts")
 def _acquire_apple(state, source, args) -> dict:
-    """Apple Podcasts: parse iTunes feed, download enclosure."""
+    """Apple Podcasts: resolve the specific episode via iTunes catalog lookup,
+    then download the enclosure directly. When the URL has `?i=<trackId>`, we
+    look up that episode by id — this is reliable. When it doesn't, we fall
+    back to the show feed and take the latest episode (with a warning)."""
     url = source.metadata_hint["url"]
     coll = re.search(r"id(\d+)", url)
     if not coll:
         raise ValueError("Could not extract collectionId from Apple URL")
     coll_id = coll.group(1)
+
+    # If the URL points to a specific episode (?i=<trackId>), resolve it directly
+    # via iTunes. Substack/Anchor/etc. RSS feeds use UUIDs as <guid> that don't
+    # match the iTunes trackId, so trying to match by RSS guid silently picks
+    # the latest episode — a class of "wrong essay generated" bugs we want to avoid.
+    track_match = re.search(r"\bi=(\d+)", url)
+    if track_match:
+        track_id = track_match.group(1)
+        return _acquire_apple_episode_by_track_id(state, url, coll_id, track_id, args)
+
+    LOG.warning("[01_acquire] Apple URL has no ?i=<trackId>; using show feed's latest episode")
     payload = _http_get(
         f"https://itunes.apple.com/lookup?id={coll_id}&entity=podcast",
         label="itunes-lookup",
@@ -647,10 +661,82 @@ def _acquire_apple(state, source, args) -> dict:
         feed_url = json.loads(payload)["results"][0]["feedUrl"]
     except (KeyError, IndexError, json.JSONDecodeError) as e:
         raise RuntimeError(f"iTunes lookup for id={coll_id} returned no feedUrl: {e}")
-    # The feedUrl is attacker-controllable via Apple's catalog content — re-validate scheme.
     _require_https(feed_url, label="apple-feed")
     LOG.info("[01_acquire] apple feed: %s", feed_url)
-    return _acquire_from_rss(state, feed_url, episode_hint=url, args=args)
+    return _acquire_from_rss(state, feed_url, episode_hint=None, args=args)
+
+
+_APPLE_PAGE_MP3_RE = re.compile(r'(https://[^"\s]+?\.mp3(?:\?[^"\s]*)?)')
+_APPLE_PAGE_TITLE_RE = re.compile(
+    r'<meta[^>]*property="og:title"[^>]*content="([^"]+)"', re.IGNORECASE
+)
+_APPLE_PAGE_SHOW_RE = re.compile(r'"showTitle"\s*:\s*"([^"]+)"')
+
+
+def _acquire_apple_episode_by_track_id(state, page_url: str, coll_id: str, track_id: str, args) -> dict:
+    """Resolve an Apple Podcasts episode by scraping the episode page.
+
+    Why scrape instead of iTunes lookup API:
+      - itunes.apple.com/lookup?id=<trackId>&entity=podcastEpisode returns
+        resultCount=0 for many shows (Substack-hosted, Anchor-hosted, etc).
+      - The HTML page reliably embeds the canonical mp3 URL and og:title.
+
+    Why not match by RSS guid (the previous approach):
+      - Apple's `?i=<trackId>` is an iTunes catalog ID, not an RSS GUID. Feeds
+        use their own UUIDs (substack:post:194544019 etc.), so substring match
+        always fails and silently falls back to "latest episode" — the wrong
+        essay generated for the wrong source. Hard to debug, hard to spot.
+    """
+    import html as html_mod
+    page = _http_get(page_url, label="apple-episode-page",
+                     max_bytes=5_000_000).decode("utf-8", errors="replace")
+
+    mp3_match = _APPLE_PAGE_MP3_RE.search(page)
+    if not mp3_match:
+        raise RuntimeError(
+            f"Could not find an mp3 enclosure URL on Apple page {page_url}. "
+            f"Apple may have changed its episode page shape — please open an issue."
+        )
+    ep_url = mp3_match.group(1)
+    _require_https(ep_url, label="apple-episode-enclosure")
+
+    title_match = _APPLE_PAGE_TITLE_RE.search(page)
+    title = html_mod.unescape(title_match.group(1)) if title_match else f"Apple episode {track_id}"
+
+    # Show (podcast) name. Apple's embedded JSON has "showTitle" with the real name
+    # ("Lenny's Podcast: Product | Career | Growth"). Fall back to URL slug if absent.
+    show_match = _APPLE_PAGE_SHOW_RE.search(page)
+    if show_match:
+        show = html_mod.unescape(show_match.group(1))
+    else:
+        slug_match = re.search(r"/podcast/([^/]+)/id\d", page_url)
+        show = slug_match.group(1).replace("-", " ").title() if slug_match else "Apple Podcasts"
+
+    LOG.info("[01_acquire] resolved Apple episode by page-scrape: %s — %s", show, title)
+
+    audio_dir = state.state_dir / "audio"
+    audio_dir.mkdir(exist_ok=True)
+    raw = audio_dir / "episode.mp3"
+    if not raw.exists():
+        _http_download(ep_url, raw)
+    wav = state.state_dir / "audio.wav"
+    if not wav.exists():
+        _ffmpeg_to_wav(raw, wav)
+
+    meta = {
+        "title": title,
+        "channel": show,
+        "duration": 0,
+        "description": "",
+        "chapters": [],
+        "lang": args.lang or "auto",
+        "initial_prompt": f"Podcast: {show}. Episode: {title}",
+        "episode_url": ep_url,
+        "itunes_track_id": track_id,
+        "itunes_collection_id": coll_id,
+        "source_page_url": page_url,
+    }
+    return {"audio_path": str(wav), "meta": meta, "needs_whisper": True}
 
 
 @register_source("rss")
