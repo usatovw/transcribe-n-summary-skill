@@ -325,10 +325,15 @@ class PreflightModelSelection(unittest.TestCase):
 
 
 class AudioDuration(unittest.TestCase):
-    def test_returns_zero_for_missing_file(self):
-        # If ffprobe fails or the file is missing, must return 0 — caller
-        # treats 0 as "unknown" and doesn't compute wild RAM numbers.
-        self.assertEqual(pipeline._audio_duration_seconds("/nonexistent/foo.wav"), 0.0)
+    def test_returns_pessimistic_default_for_missing_file(self):
+        # When ffprobe can't read the file, the function returns a pessimistic
+        # 1-hour default so the preflight errs toward chunked mode / larger RAM
+        # estimates, instead of treating the file as 0-duration and picking a
+        # too-big model (the bug an earlier review caught).
+        self.assertEqual(
+            pipeline._audio_duration_seconds("/nonexistent/foo.wav"),
+            pipeline._PESSIMISTIC_DURATION_S,
+        )
 
 
 if __name__ == "__main__":

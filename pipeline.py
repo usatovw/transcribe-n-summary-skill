@@ -394,6 +394,21 @@ def step_acquire(state: State, source, args) -> dict:
             partial_path=partial,
         )
         out["transcript_segments"] = segs
+        # Whisper has now detected the actual language. If the source handler
+        # left meta.lang as "auto" (no a-priori hint), backfill the detected
+        # value so downstream compose/verify know what language the source is in.
+        # Without this, cross-language quote translation (compose rule 5) never
+        # triggers — meta.lang stays "auto" and source_lang becomes "au".
+        if out["meta"].get("lang", "auto") in ("auto", "", None) and partial.exists():
+            try:
+                final = json.loads(partial.read_text())
+                detected = final.get("language") or ""
+                if detected and detected != "auto":
+                    out["meta"]["lang"] = detected
+                    out["meta"]["lang_probability"] = final.get("language_probability", 0)
+                    LOG.info("[01_acquire] backfilled meta.lang=%s (Whisper-detected)", detected)
+            except (json.JSONDecodeError, OSError) as e:
+                LOG.warning("[01_acquire] couldn't backfill lang from partial: %s", e)
 
     return out
 
@@ -811,8 +826,11 @@ def _whisper_transcribe_chunked(audio_path: str, language: str | None,
         model_name, device="cpu", compute_type=cfg["compute_type"],
         cpu_threads=cfg["cpu_threads"], num_workers=cfg["num_workers"],
     )
-    detected_lang = "auto"
-    detected_lang_prob = 0.0
+    # Per-chunk language votes by duration. Mixed-language audio (English intro,
+    # Russian guest) shouldn't be tagged by whichever language the *last* chunk
+    # happened to land on. We weight votes by audio duration of each chunk so
+    # one 30-second mismatch can't outvote 9 chunks of consistent language.
+    lang_votes: dict[str, float] = {}
     try:
         for idx, chunk_path in enumerate(existing):
             if idx < completed_chunks:
@@ -833,6 +851,7 @@ def _whisper_transcribe_chunked(audio_path: str, language: str | None,
                 prompt_reset_on_temperature=cfg["prompt_reset_on_temperature"],
             )
             chunk_count = 0
+            chunk_segs_dur = 0.0
             for s in segments:
                 all_segs.append({
                     "start": float(s.start) + offset, "end": float(s.end) + offset,
@@ -840,10 +859,12 @@ def _whisper_transcribe_chunked(audio_path: str, language: str | None,
                     "no_speech_prob": s.no_speech_prob, "avg_logprob": s.avg_logprob,
                 })
                 chunk_count += 1
-            detected_lang = info.language or detected_lang
-            detected_lang_prob = info.language_probability or detected_lang_prob
-            LOG.info("chunked-whisper: chunk %d/%d done (+%d segs, total=%d, lang=%s)",
-                     idx + 1, len(existing), chunk_count, len(all_segs), detected_lang)
+                chunk_segs_dur += float(s.end) - float(s.start)
+            if info and info.language and chunk_segs_dur > 0:
+                lang_votes[info.language] = lang_votes.get(info.language, 0.0) + chunk_segs_dur
+            current_winner = max(lang_votes, key=lang_votes.get) if lang_votes else "auto"
+            LOG.info("chunked-whisper: chunk %d/%d done (+%d segs, total=%d, lang_winner=%s)",
+                     idx + 1, len(existing), chunk_count, len(all_segs), current_winner)
             if partial_path:
                 partial_path.write_text(json.dumps({
                     "segments": all_segs, "chunks_done": idx + 1,
@@ -854,14 +875,29 @@ def _whisper_transcribe_chunked(audio_path: str, language: str | None,
         del model
         gc.collect()
 
+    # Final language: argmax of duration-weighted votes.
+    if lang_votes:
+        winner = max(lang_votes, key=lang_votes.get)
+        total = sum(lang_votes.values())
+        detected_lang = winner
+        detected_lang_prob = lang_votes[winner] / total if total else 0.0
+    else:
+        detected_lang, detected_lang_prob = "auto", 0.0
+
     if partial_path:
         partial_path.write_text(json.dumps({
             "segments": all_segs, "chunks_done": len(existing),
             "done": True,
             "language": detected_lang, "language_probability": detected_lang_prob,
+            "lang_votes": lang_votes,
         }, ensure_ascii=False))
-    LOG.info("chunked-whisper: complete, %d segments across %d chunks",
-             len(all_segs), len(existing))
+    LOG.info("chunked-whisper: complete, %d segments across %d chunks, lang=%s (votes=%s)",
+             len(all_segs), len(existing), detected_lang, lang_votes)
+    if not all_segs:
+        raise RuntimeError(
+            "chunked-whisper: 0 segments across all chunks — audio likely silent "
+            "or corrupted. Check whisper_chunks/ and the source mp3."
+        )
     return _post_filter_whisper(all_segs)
 
 
@@ -1035,18 +1071,30 @@ def _pick_whisper_model(requested: str, duration_s: float) -> tuple[str, str, bo
     )
 
 
+_PESSIMISTIC_DURATION_S = 3600.0  # assume 1 hour when ffprobe can't read it
+
+
 def _audio_duration_seconds(audio_path: str) -> float:
-    """Quick ffprobe to learn audio length. Returns 0 if it fails (we then default to
-    the most pessimistic long-form estimate to stay safe)."""
+    """Probe audio length via ffprobe. If probing fails, returns a pessimistic
+    1-hour default (and logs a warning) so the preflight defaults to chunked /
+    larger-RAM math instead of silently treating the file as 0-duration and
+    picking the biggest model that fits a 0-second clip."""
     try:
         r = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration",
              "-of", "default=noprint_wrappers=1:nokey=1", audio_path],
             capture_output=True, text=True, check=False, timeout=15,
         )
-        return float(r.stdout.strip() or 0)
-    except (FileNotFoundError, subprocess.SubprocessError, ValueError):
-        return 0.0
+        if r.returncode == 0 and r.stdout.strip():
+            return float(r.stdout.strip())
+    except (FileNotFoundError, subprocess.SubprocessError, ValueError) as e:
+        LOG.warning("ffprobe failed on %s: %s", audio_path, e)
+    LOG.warning(
+        "audio duration unknown for %s — assuming %d s (1 hour) for preflight; "
+        "this errs toward chunked mode / larger RAM headroom",
+        audio_path, int(_PESSIMISTIC_DURATION_S),
+    )
+    return _PESSIMISTIC_DURATION_S
 
 
 def _parse_srt(srt_text: str) -> list:
@@ -1621,6 +1669,18 @@ def _invalidate_downstream(state: State, from_step: int) -> None:
         for f in state.state_dir.glob(f"{name}.*"):
             LOG.info("invalidating downstream: %s", f.name)
             f.unlink()
+    # Whisper artifacts live outside the JSON-checkpoint naming scheme. If we're
+    # redoing step 1, clear them too — otherwise stale chunks/partials get
+    # picked up by the chunked path and re-stitched into the new transcript.
+    if from_step <= 1:
+        for path in (state.state_dir / "whisper_chunks",):
+            if path.exists():
+                LOG.info("invalidating downstream: %s/", path.name)
+                shutil.rmtree(path, ignore_errors=True)
+        partial = state.state_dir / "01_whisper.partial.json"
+        if partial.exists():
+            LOG.info("invalidating downstream: %s", partial.name)
+            partial.unlink()
 
 
 def _final_iter_json(state: State, prefix: str) -> dict:
