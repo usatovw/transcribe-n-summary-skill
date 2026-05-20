@@ -7,12 +7,28 @@
 #  Common knobs
 # ============================
 
-# Claude model used for every LLM step.
-# - claude-opus-4-7   — strongest, best for slow-journalism essay-craft
-# - claude-sonnet-4-6 — ~3x cheaper, mild quality drop, fine for non-essay sources
-# - claude-haiku-4-5  — cheap smoke tests; quality drop is real
+# Claude models per step. The pipeline routes each step to a model sized for the
+# work it does:
+#   - schema-driven steps (extract/ledger/plan/gap) → Sonnet 4.6 — 3-5x cheaper
+#     and faster than Opus with negligible quality loss on JSON extraction tasks
+#   - craft / strict-judgment steps (tensions/compose/verify/edit) → Opus 4.7 —
+#     the essay-writing and faithfulness-checking is where quality compounds
+# Set every entry to `claude-opus-4-7` for maximum quality everywhere, or to
+# `claude-haiku-4-5` for cheap smoke tests (real quality drop).
+#
+# SDK path automatically gets prompt caching (system prompts marked with
+# cache_control:ephemeral when long); CLI fallback can't cache and runs slower.
 claude:
-  model: claude-opus-4-7
+  model: claude-opus-4-7     # default; overridden per step below
+  model_per_step:
+    extract:  claude-sonnet-4-6
+    ledger:   claude-sonnet-4-6
+    plan:     claude-sonnet-4-6
+    tensions: claude-opus-4-7
+    compose:  claude-opus-4-7
+    verify:   claude-opus-4-7
+    gap:      claude-sonnet-4-6
+    edit:     claude-opus-4-7
   max_tokens_extract: 8000
   max_tokens_compose: 6000
   max_tokens_verify: 4000

@@ -291,6 +291,14 @@ def _claude_call_cli(system, user_content, model, timeout):
             pass
 
 
+def _model_for_step(step: str) -> str:
+    """Look up the model assigned to a given pipeline step.
+    `model_per_step` in config.yaml maps each step to a model; falls back to
+    `claude.model` (the default) if the step isn't listed."""
+    per_step = CONFIG.get("claude", {}).get("model_per_step", {}) or {}
+    return per_step.get(step) or CONFIG["claude"]["model"]
+
+
 def claude_call(
     system: str,
     user_content: str,
@@ -1209,6 +1217,8 @@ async def step_extract(state, chunks_data, meta) -> dict:
     cache = state.state_dir / "extract_cache"
     cache.mkdir(parents=True, exist_ok=True)
     sys_prompt = load_prompt("01_extract")
+    model = _model_for_step("extract")
+    LOG.info("[03_extract] using model=%s", model)
 
     async def extract_one(chunk):
         cache_path = cache / f"{chunk['id']}.json"
@@ -1229,6 +1239,7 @@ async def step_extract(state, chunks_data, meta) -> dict:
                     result = await asyncio.to_thread(
                         claude_call_json,
                         sys_prompt, user,
+                        model=model,
                         max_tokens=CONFIG["claude"]["max_tokens_extract"],
                     )
                     result["chunk_id"] = chunk["id"]
@@ -1280,7 +1291,10 @@ def step_ledger(state, extracts_data, meta) -> dict:
         "extracts": extracts_data["extracts"],
         "prior_episode_claims": prior[:50],  # cap
     }, ensure_ascii=False)
-    result = claude_call_json(sys_prompt, user, max_tokens=CONFIG["claude"]["max_tokens_extract"])
+    model = _model_for_step("ledger")
+    LOG.info("[04_ledger] using model=%s", model)
+    result = claude_call_json(sys_prompt, user, model=model,
+                              max_tokens=CONFIG["claude"]["max_tokens_extract"])
     return result
 
 
@@ -1362,7 +1376,9 @@ def step_plan(state, ledger, meta) -> dict:
         "related_episodes": related,
         "constitution": constitution,
     }, ensure_ascii=False)
-    return claude_call_json(sys_prompt, user, max_tokens=4000)
+    model = _model_for_step("plan")
+    LOG.info("[05_plan] using model=%s", model)
+    return claude_call_json(sys_prompt, user, model=model, max_tokens=4000)
 
 
 # ---------- Step 06: TENSIONS ----------
@@ -1375,7 +1391,9 @@ def step_tensions(state, ledger, plan, transcript_segments) -> dict:
         "outline": plan,
         "transcript_with_timestamps": transcript_text[:50000],  # cap
     }, ensure_ascii=False)
-    return claude_call_json(sys_prompt, user, max_tokens=4000)
+    model = _model_for_step("tensions")
+    LOG.info("[06_tensions] using model=%s", model)
+    return claude_call_json(sys_prompt, user, model=model, max_tokens=4000)
 
 
 # ---------- Step 07: COMPOSE ----------
@@ -1410,7 +1428,10 @@ def step_compose(state, ledger, plan, tensions, meta) -> str:
         "source_lang": source_lang,
         "output_lang": output_lang,
     }, ensure_ascii=False)
-    return claude_call(sys_prompt, user, max_tokens=CONFIG["claude"]["max_tokens_compose"])
+    model = _model_for_step("compose")
+    LOG.info("[07_compose] using model=%s", model)
+    return claude_call(sys_prompt, user, model=model,
+                       max_tokens=CONFIG["claude"]["max_tokens_compose"])
 
 
 def _load_gold_anchors(plan) -> list:
@@ -1441,7 +1462,10 @@ def step_verify(state, essay_md, ledger, transcript_segments, meta=None) -> dict
         "source_lang": source_lang,
         "output_lang": output_lang,
     }, ensure_ascii=False)
-    return claude_call_json(sys_prompt, user, max_tokens=CONFIG["claude"]["max_tokens_verify"])
+    model = _model_for_step("verify")
+    LOG.info("[08_verify] using model=%s", model)
+    return claude_call_json(sys_prompt, user, model=model,
+                            max_tokens=CONFIG["claude"]["max_tokens_verify"])
 
 
 # ---------- Step 09: GAP ----------
@@ -1453,7 +1477,9 @@ def step_gap(state, essay_md, ledger, plan) -> dict:
         "ledger": ledger,
         "outline_non_inclusion": plan.get("non_inclusion_rationale", ""),
     }, ensure_ascii=False)
-    return claude_call_json(sys_prompt, user, max_tokens=3000)
+    model = _model_for_step("gap")
+    LOG.info("[09_gap] using model=%s", model)
+    return claude_call_json(sys_prompt, user, model=model, max_tokens=3000)
 
 
 # ---------- Step 10: EDIT loop ----------
@@ -1488,7 +1514,11 @@ def step_edit_loop(state, essay_md, ledger) -> str:
             "anti_barnum": anti_barnum,
             "iteration": it,
         }, ensure_ascii=False)
-        new = claude_call(sys_prompt, user, max_tokens=CONFIG["claude"]["max_tokens_compose"])
+        edit_model = _model_for_step("edit")
+        if it == 1:
+            LOG.info("[10_edit] using model=%s", edit_model)
+        new = claude_call(sys_prompt, user, model=edit_model,
+                          max_tokens=CONFIG["claude"]["max_tokens_compose"])
         # Stop early if diff < threshold
         diff_ratio = _word_diff_ratio(current, new)
         LOG.info("[10_edit] iter %d diff_ratio=%.2f", it, diff_ratio)

@@ -105,10 +105,14 @@ git clone https://github.com/usatovw/transcribe-n-summary-skill.git ~/.claude/sk
 `config.yaml` сгруппирован: сверху часто-меняемое, снизу — тюнинг.
 
 **Часто:**
-- `claude.model` — по умолчанию `claude-opus-4-7`. На `claude-sonnet-4-6` или `claude-haiku-4-5` — дешевле, чуть хуже.
-- `whisper.model` — `medium` (1.5 GB peak RAM, безопасно для 4 GB). `small` если памяти мало. `large-v3-turbo` если ≥6 GB или GPU.
+- `claude.model_per_step` — pipeline по умолчанию **смешивает модели**: schema-driven шаги (`extract/ledger/plan/gap`) на Sonnet 4.6, craft/judgment шаги (`tensions/compose/verify/edit`) на Opus 4.7. Это ~40% быстрее и дешевле full-Opus pipeline без видимой потери качества эссе. Для production-quality пиши всё на `claude-opus-4-7`. Для дешёвых smoke-test'ов — на `claude-haiku-4-5` (real quality drop).
+- `whisper.model` — `medium` (1.5 GB peak RAM, безопасно для 4 GB). `small` если памяти мало. `large-v3-turbo` если ≥6 GB или GPU. **Pipeline сам downgrade'ит** под доступную RAM + переключается на chunked mode для long-form (>60 min) — см. preflight в `pipeline.py`.
 - `compose.output_lang` — `ru` по умолчанию. `en` если положил английские gold-эссе.
 - `youtube.cookies_file` — путь к cookies.txt если YouTube блокирует твой IP (см. [Troubleshooting](#troubleshooting)).
+
+**Стоимость и скорость:**
+- С **`ANTHROPIC_API_KEY`** (SDK путь) — system prompts кешируются (`cache_control: ephemeral`), повторные верифай/эдит итерации в 2-3× дешевле. Это правильный путь для opensource юзеров.
+- С **`claude` CLI fallback** — caching недоступен (CLI `--print` не expose `cache_control`). Работает, но медленнее и дороже. Используй если нет API key и есть Claude Code MAX/Pro.
 
 **Тюнинг:** `whisper.vad_*`, `chunking.cosine_threshold`, `extract.semaphore`, `compose.verbatim_quote_ratio_*`, `verify.faithfulness_min`, `verify.edit_loop_max`.
 
