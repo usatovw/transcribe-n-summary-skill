@@ -248,5 +248,88 @@ class HashId(unittest.TestCase):
         self.assertEqual(len(source_router._hash_id("anything")), 12)
 
 
+class PreflightModelSelection(unittest.TestCase):
+    """The preflight is the only thing standing between a long-audio run and an
+    OOM-killed VM. Every decision boundary gets a test."""
+
+    def _pick(self, free_mb, model, duration_min):
+        # Monkey-patch the RAM probe.
+        orig = pipeline._free_ram_mb
+        pipeline._free_ram_mb = lambda: free_mb
+        try:
+            return pipeline._pick_whisper_model(model, duration_min * 60)
+        finally:
+            pipeline._free_ram_mb = orig
+
+    def test_short_audio_fits_requested(self):
+        # 8 GB free, 5-min audio, asked for medium — should run medium single-pass.
+        model, _, chunked = self._pick(8000, "medium", 5)
+        self.assertEqual(model, "medium")
+        self.assertFalse(chunked)
+
+    def test_short_audio_downgrades_when_tight(self):
+        # 2.5 GB free, 5-min audio, asked for medium — single-pass medium needs ~4 GB,
+        # should downgrade to small or base single-pass.
+        model, _, chunked = self._pick(2500, "medium", 5)
+        self.assertIn(model, {"small", "base", "tiny"})
+        self.assertFalse(chunked)
+
+    def test_long_audio_prefers_chunked(self):
+        # 8 GB free, 90-min audio. Should pick CHUNKED, not single-pass.
+        # Quality > speed for long form.
+        model, _, chunked = self._pick(8000, "medium", 90)
+        self.assertTrue(chunked, "long audio (>60 min) should use chunked mode")
+
+    def test_long_audio_chunked_uses_bigger_model_than_single_pass_tiny(self):
+        # 4 GB free, 99-min audio. Single-pass medium needs ~6 GB (no go),
+        # single-pass tiny would fit, but chunked base also fits and gives
+        # better quality. The preflight should prefer chunked.
+        model, _, chunked = self._pick(4000, "medium", 99)
+        self.assertTrue(chunked)
+        # base or better — not the desperate-fallback tiny
+        self.assertIn(model, {"small", "base", "medium"})
+
+    def test_refuse_when_too_low(self):
+        # 500 MB free, 99-min audio. Even chunked tiny won't fit.
+        with self.assertRaises(RuntimeError) as ctx:
+            self._pick(500, "medium", 99)
+        msg = str(ctx.exception)
+        # Remediation must be in the message — users need to know what to do.
+        self.assertIn("swap", msg.lower())
+        self.assertIn("ram", msg.lower())
+
+    def test_chunked_works_even_when_requested_doesnt_fit_singlepass(self):
+        # 2 GB free, 90-min audio. Single-pass medium needs ~5 GB. Chunked tiny fits.
+        model, _, chunked = self._pick(2000, "medium", 90)
+        self.assertTrue(chunked)
+
+    def test_required_ram_long_form_multiplier(self):
+        # >90 min audio uses x1.5 multiplier — verify the math.
+        short = pipeline._required_whisper_ram_mb("medium", 30 * 60)  # 30 min
+        long_ = pipeline._required_whisper_ram_mb("medium", 100 * 60)  # 100 min
+        self.assertGreater(long_, short, "long audio should require more RAM than short")
+        # x1.5 over 3500 base + 800 safety = at least 5800
+        self.assertGreater(long_, 5000)
+
+    def test_required_ram_chunked_no_duration_factor(self):
+        # Chunked peak should be independent of total audio length —
+        # we only ever hold one chunk in memory.
+        short = pipeline._required_whisper_ram_chunked_mb("medium")
+        long_ = pipeline._required_whisper_ram_chunked_mb("medium")
+        self.assertEqual(short, long_)
+
+    def test_unknown_model_falls_back_to_table_default(self):
+        # If config has a typo'd model name, preflight should not crash.
+        need = pipeline._required_whisper_ram_mb("not-a-real-model", 30 * 60)
+        self.assertGreater(need, 0)
+
+
+class AudioDuration(unittest.TestCase):
+    def test_returns_zero_for_missing_file(self):
+        # If ffprobe fails or the file is missing, must return 0 — caller
+        # treats 0 as "unknown" and doesn't compute wild RAM numbers.
+        self.assertEqual(pipeline._audio_duration_seconds("/nonexistent/foo.wav"), 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()
